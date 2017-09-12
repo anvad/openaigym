@@ -1,8 +1,13 @@
 """
 cartpole_v0 re-inforcement learning
 
-Episode 152 finished after 200 timesteps. learning rate (alpha) = 0.00048496605237633366
-running average of reward per episode:  197.75
+Episode 340 finished after 200 timesteps. learning rate (alpha) = 0.00034458993797381116
+running average of reward per episode:  196.35
+but this is not stable- sometimes I am not getting to the end before i run out of episodes
+
+I'm going to assume that you have an (ndims,) vector of indices specifying some point p, and you want an (m, ndims) array of indices corresponding to the locations of every adjacent element in the array (including diagonally adjacent elements).
+Starting out with your indexing vector p, you want to offset each element by every possible combination of -1, 0 and +1. This can be done by using np.indices to generate an (m, ndims) array of offsets, then adding these offsets to p.
+You might want to exclude point p itself (i.e. where offset == np.array([0, 0, ..., 0]), and you may also need to exclude out-of-bounds indices.
 """
 
 import math
@@ -79,7 +84,7 @@ def back_propagate(q_space, cells_visited, final_index, gamma, alpha_space, disp
         index_ = index
         if display_back_propagate:
             print("after: ", q_space[index])
-        #break; # just do the last cell
+        break; # just do the last cell
 
 
 def get_index(observation_space_markers, observation):
@@ -131,7 +136,7 @@ def main():
     #q_space = np.load('./q_space.npy')
 
 
-    gamma = 0.8  # discount factor. higher value means we still value old data
+    gamma = 0.6  # discount factor. higher value means we still value old data
 
     high = np.full_like(env.observation_space.high, float('-inf'))
     low = np.full_like(env.observation_space.low, float('inf'))
