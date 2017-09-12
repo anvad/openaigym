@@ -1,5 +1,8 @@
 """
 cartpole_v0 re-inforcement learning
+
+Episode 152 finished after 200 timesteps. learning rate (alpha) = 0.00048496605237633366
+running average of reward per episode:  197.75
 """
 
 import math
@@ -7,6 +10,7 @@ from random import uniform
 import numpy as np
 import gym
 from gym import wrappers
+import collections
 
 class observation_space:
     def __init__(self, high, low):
@@ -127,20 +131,19 @@ def main():
     #q_space = np.load('./q_space.npy')
 
 
-    gamma = 0.6 # discount factor. higher value means we still value old data
+    gamma = 0.8  # discount factor. higher value means we still value old data
 
-    #high = [float('-inf') for _ in env.observation_space.high]
-    #low = [float('inf') for _ in env.observation_space.low]
     high = np.full_like(env.observation_space.high, float('-inf'))
     low = np.full_like(env.observation_space.low, float('inf'))
     os_space = observation_space(env.observation_space.high, env.observation_space.low)
+
+    min_episodes_rewards_avg = 20
+    last_few_rewards = collections.deque(maxlen=min_episodes_rewards_avg)
 
     for i_episode in range(num_episodes):
         total_reward, reward = 0, 0
         observation = env.reset()
         index = get_index(os_markers, observation)
-        #high = [hi if hi > high[hi_index] else high[hi_index] for hi_index, hi in enumerate(observation)]
-        #low = [lo if lo < low[lo_index] else low[lo_index] for lo_index, lo in enumerate(observation)]
         high = np.maximum(high, observation)
         low = np.minimum(low, observation)
 
@@ -166,8 +169,10 @@ def main():
             index_ = get_index(os_markers, observation_)
             if index_ == index:
                 #print("state did not change.")
+                print('.', end=' ')
                 pass
             else:
+                print('+', end=' ')
                 cells_visited.append((index, action, reward))
                 # if not done, update q_values
                 sample = reward + gamma * max(q_space[index_]) # changed reward to total_reward
@@ -176,7 +181,7 @@ def main():
 
 
             if done:
-                print("Episode {} finished after {} timesteps. learning rate (alpha) = {}"
+                print("\nEpisode {} finished after {} timesteps. learning rate (alpha) = {}"
                     .format(i_episode, t+1, alpha))
 
                 reward = total_reward + done_reward
@@ -196,8 +201,15 @@ def main():
             high = np.maximum(high, observation)
             low = np.minimum(low, observation)
 
+        #after an episode is over
+        # update running average
+        last_few_rewards.append(total_reward)
+        running_average = sum(last_few_rewards)/min_episodes_rewards_avg
+        print("running average of reward per episode: ", running_average)
+        if running_average >= 195.0:
+            break
 
-        #after an episode is over, re-visit creation of OS_markers based on latest data
+        # re-visit creation of OS_markers based on latest data
         if (high != os_space.high).any() or (low != os_space.low).any():
             os_space.high = high
             os_space.low = low
