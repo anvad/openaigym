@@ -7,7 +7,7 @@ import numpy as np
 import gym
 from gym import wrappers
 
-def get_observation_space_markers(observation_space, num_elements_per_dimension, scaling = 10):
+def get_observation_space_markers(observation_space, num_elements_per_dimension, scaling = 100):
     """
     given an observation_space, comes up with a dictionary for each dimension of the observation space
         each dictionary shows the size of each segment and whether we are using a logarithmic scale
@@ -48,19 +48,22 @@ def get_observation_space_markers(observation_space, num_elements_per_dimension,
     return os_markers
 
 
-def back_propagate(q_space, cells_visited, final_index, gamma, alpha, display_back_propagate):
+def back_propagate(q_space, cells_visited, final_index, gamma, alpha_space, display_back_propagate):
     """
     given a qspace and list of cells visited (in order), back propagates the q values
     """
 
     print("back propagating: ", final_index)
     index_ = final_index
+    alpha = 0.5
     for index, action, reward in reversed(cells_visited):
         if display_back_propagate:
             print("before: ", index, q_space[index], action)
+
+        #alpha = 1 / alpha_space[index]
         sample = reward + gamma * max(q_space[index_])
         q_space[index][action] = (1 - alpha) * q_space[index][action] + alpha * sample
-        #q_space[index][action] = reward
+        #q_space[index][action] = sample # ignoring previous values
         #reward = backprop_decay * reward # why keep reward 0? since this is continuous space, i am back propagating the reward
         index_ = index
         if display_back_propagate:
@@ -99,10 +102,10 @@ def main():
     """
     env = gym.make('CartPole-v0')
     #env = wrappers.Monitor(env, './tmp/cartpole-experiment-1', )
-    num_episodes = 1000 # number of episodes we'll play
-    max_steps_per_episode = 400
-    num_elements_per_dimension = 21 # number of discrete pieces to divide each dimension of the observation space into
-    done_reward = -100 # we want to give a large penalty if we exit the game
+    num_episodes = 100 # number of episodes we'll play
+    max_steps_per_episode = 200
+    num_elements_per_dimension = 7 # number of discrete pieces to divide each dimension of the observation space into
+    done_reward = -200 # we want to give a large penalty if we exit the game
     display_back_propagate = False
 
     os_markers = get_observation_space_markers(env.observation_space, num_elements_per_dimension)
@@ -114,23 +117,21 @@ def main():
     #q_space = np.load('./q_space.npy')
 
 
-    gamma = 0.8 # discount factor. higher value means we still value old data
+    gamma = 0.6 # discount factor. higher value means we still value old data
     backprop_decay = 0.8
 
     for i_episode in range(num_episodes):
         total_reward, reward = 0, 0
         observation = env.reset()
         index = get_index(os_markers, observation)
-        alpha = num_episodes/(i_episode + num_episodes) # learning rate will decrease slowly as we gain more experience from different episodes
-
-        if i_episode/num_episodes > 0.95: # last 5% episodes with alpha = 0
-            alpha = 0
 
         cells_visited = []
 
         for t in range(max_steps_per_episode):
             env.render()
 
+            alpha_space[index] += 1
+            alpha = 1 / alpha_space[index]
             rand_number = uniform(0, 1)
             if rand_number < alpha:
                 action = env.action_space.sample()
@@ -148,24 +149,25 @@ def main():
                 pass
             else:
                 cells_visited.append((index, action, reward))
+                # if not done, update q_values
+                sample = reward + gamma * max(q_space[index_]) # changed reward to total_reward
+                q_space[index][action] = (1 - alpha) * q_space[index][action] + alpha * sample
+                #print(action, rand_number < alpha, reward, index, q_space[index])
+
 
             if done:
                 print("Episode {} finished after {} timesteps. learning rate (alpha) = {}"
                     .format(i_episode, t+1, alpha))
 
-                reward = done_reward
+                reward = total_reward + done_reward
                 cells_visited[-1] = (index, action, reward)
                 if i_episode == num_episodes - 1:
                     display_back_propagate = True
                     np.save("./q_space", q_space)
-                if alpha > 0:
-                    back_propagate(q_space, cells_visited, index_, gamma, alpha, display_back_propagate) # directly updates q_space
+                if alpha > 0 and t < max_steps_per_episode - 1:
+                    back_propagate(q_space, cells_visited, index_, gamma, alpha_space, display_back_propagate) # directly updates q_space
                 break
 
-            # if not done, update q_values
-            sample = reward + gamma * max(q_space[index_]) # changed reward to total_reward
-            q_space[index][action] = (1 - alpha) * q_space[index][action] + alpha * sample
-            #print(action, rand_number < alpha, reward, index, q_space[index])
 
             observation = observation_
             index = index_
