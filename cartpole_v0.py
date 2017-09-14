@@ -1,9 +1,9 @@
 """
 cartpole_v0 re-inforcement learning
 
-Episode 340 finished after 200 timesteps. learning rate (alpha) = 0.00034458993797381116
-running average of reward per episode:  196.35
-but this is not stable- sometimes I am not getting to the end before i run out of episodes
+Episode 97 finished after 200 timesteps. learning rate (alpha) = 0.0008410428931875525
+reward at done:  1.0
+running average of reward per episode:  196.8
 
 I'm going to assume that you have an (ndims,) vector of indices specifying some point p, and you want an (m, ndims) array of indices corresponding to the locations of every adjacent element in the array (including diagonally adjacent elements).
 Starting out with your indexing vector p, you want to offset each element by every possible combination of -1, 0 and +1. This can be done by using np.indices to generate an (m, ndims) array of offsets, then adding these offsets to p.
@@ -40,23 +40,17 @@ def get_observation_space_markers(observation_space, num_elements_per_dimension,
         os_marker = os_markers[i]
         high = os_high[i]
         low = os_low[i]
-        use_logarithmic_scale = False
+        use_sigmoid_scale = False
         if high - low > 1e5:
-            use_logarithmic_scale = True #we want to use log scale if the numbers are large
-            high = math.copysign(math.log10(abs(high)), high)
-            low = math.copysign(math.log10(abs(low)), low)
+            use_sigmoid_scale = True #we want to use log scale if the numbers are large
+            high = 1
+            low = 0
 
         shift = 0 # records how much to shift the value, to get zero based indices
         if low < 0:
-            if use_logarithmic_scale:
-                shift = abs(low ) / scaling
-            else:
-                shift = abs(low)
-        os_marker['use_logarithmic_scale'] = use_logarithmic_scale
-        if use_logarithmic_scale:
-            segment_size = (high - low) / (num_elements_per_dimension * scaling)
-        else:
-            segment_size = (high - low) / (num_elements_per_dimension)
+            shift = abs(low)
+        os_marker['use_sigmoid_scale'] = use_sigmoid_scale
+        segment_size = (high - low) / (num_elements_per_dimension)
         os_marker['segment_size'] = segment_size
         os_marker['shift'] = shift
         os_marker['num_segments'] = num_elements_per_dimension
@@ -94,8 +88,8 @@ def get_index(observation_space_markers, observation):
     for i in range(num_dimensions):
         os_marker = observation_space_markers[i]
         obs_val = observation[i]
-        if os_marker['use_logarithmic_scale']:
-            obs_val = math.copysign(math.log10(abs(obs_val)), obs_val)
+        if os_marker['use_sigmoid_scale']:
+            obs_val = 1 / (1 + math.exp(-obs_val))
         segment_size = os_marker['segment_size']
         shift = os_marker['shift']
         index_i = math.floor( (obs_val + shift) / segment_size)
@@ -122,8 +116,8 @@ def main():
     #env = wrappers.Monitor(env, './tmp/cartpole-experiment-1', )
     num_episodes = 400 # number of episodes we'll play
     max_steps_per_episode = 200
-    num_elements_per_dimension = 5 # number of discrete pieces to divide each dimension of the observation space into
-    done_reward = -199 # we want to give a large penalty if we exit the game
+    num_elements_per_dimension = 3 # number of discrete pieces to divide each dimension of the observation space into
+
     display_back_propagate = False
 
     # get initial OS markers
@@ -135,7 +129,8 @@ def main():
     q_space = np.zeros(shape=tuple(q_space_shape))
     #q_space = np.load('./q_space.npy')
 
-
+    #done_reward = -(num_elements_per_dimension * len(os_markers)) # we want to give a large penalty if we exit the game
+    done_reward = -200
     gamma = 0.6  # discount factor. higher value means we still value old data
 
     high = np.full_like(env.observation_space.high, float('-inf'))
@@ -188,15 +183,16 @@ def main():
             if done:
                 print("\nEpisode {} finished after {} timesteps. learning rate (alpha) = {}"
                     .format(i_episode, t+1, alpha))
-
+                print("reward at done: ", reward)
                 reward = total_reward + done_reward
                 #reward = done_reward
-                cells_visited[-1] = (index, action, reward)
-                if i_episode == num_episodes - 1:
-                    display_back_propagate = True
-                    np.save("./q_space", q_space)
-                if alpha > 0 and t < max_steps_per_episode - 1:
-                    back_propagate(q_space, cells_visited, index_, gamma, alpha_space, display_back_propagate) # directly updates q_space
+                if len(cells_visited):
+                    cells_visited[-1] = (index, action, reward)
+                    if i_episode == num_episodes - 1:
+                        display_back_propagate = True
+                        np.save("./q_space", q_space)
+                    if alpha > 0 and t < max_steps_per_episode - 1:
+                        back_propagate(q_space, cells_visited, index_, gamma, alpha_space, display_back_propagate) # directly updates q_space
                 break
 
 
@@ -219,7 +215,7 @@ def main():
             os_space.high = high
             os_space.low = low
             print("new high and low", high, low)
-            os_markers = get_observation_space_markers(os_space, num_elements_per_dimension)
+            #os_markers = get_observation_space_markers(os_space, num_elements_per_dimension)
 
 if __name__ == '__main__':
     main()
