@@ -187,41 +187,41 @@ def q_learning():
     env = gym.make('CartPole-v0')
     #env = wrappers.Monitor(env, './tmp/cartpole-experiment-1', )
     num_episodes = 10000 # number of episodes we'll play
-    max_meta_episodes = 200 # if we have not converged after these many episodes, ditch the qspace and start again
+    max_inner_episodes = 199 # if we have not converged after these many episodes, ditch the qspace and start again
     max_steps_per_episode = 201
     num_elements_per_dimension = 4 # number of discrete pieces to divide each dimension of the observation space into
-    k = 5 # exploration temperature
+    k = 5 # exploration temperature. higher value means we give more weight to explore, else more weight to exploit
     done_reward = -200
     gamma = 0.8  # discount factor. higher value means we still value old data
-    backprop_decay = 0.99 # the lower the number (between 0 and 1), the quicker the negative effects of dying decay as we move back in time
-    num_last_few_episodes = 20
+    min_alpha = 0.2 # minimum learning rate as we keep exploring. alpha will never go lower than this
 
+    # store running average of total reward for last X episodes in a circular buffer
+    num_last_few_episodes = 20
     last_few_rewards = collections.deque(maxlen=num_last_few_episodes)
 
-    # get initial OS markers
+    # get initial OS markers, so we can later find indexes in the discrete state space, given an observation in the continous real world space
     os_markers = get_observation_space_markers(env.observation_space, num_elements_per_dimension)
 
     # set up q(s,a) and alpha spaces in numpy
-    q_space_shape = [os_marker['num_segments'] for os_marker in os_markers]
+    q_space_shape = [os_marker['num_segments'] for os_marker in os_markers] # this gets me the shape of the observation space
     q_space_shape.append(env.action_space.n) # the last dimension is the action space
 
     q_space = np.zeros(shape=tuple(q_space_shape))
     x_space = np.zeros(shape=tuple(q_space_shape)) # exploration space to store freq of choosing (s,a)
     #q_space = np.load('./q_space.npy')
 
-    num_meta_episodes = 0
+    num_inner_episodes = 0
     for i_episode in range(num_episodes):
         total_reward, reward = 0, 0
         observation = env.reset()
         index = get_index(os_markers, observation)
 
-        num_meta_episodes += 1
-        if num_meta_episodes > max_meta_episodes:
-            num_meta_episodes = 0
+        num_inner_episodes += 1
+        if num_inner_episodes > max_inner_episodes:
+            num_inner_episodes = 0
             q_space = np.zeros(shape=tuple(q_space_shape))
             x_space = np.zeros(shape=tuple(q_space_shape)) # exploration space to store freq of choosing (s,a)
-            print("entering next meta episode!!!!!!!!!!!!!!!!!!!!!!!")
-            #input()
+            print("entering next inner episode!!!!!!!!!!!!!!!!!!!!!!!")
 
         cells_visited = [] # store chronological list of states visited
 
@@ -235,15 +235,6 @@ def q_learning():
             else:
                 action = env.action_space.sample()
 
-            #epsilon = 1 / max(1, sum(x_space[index])) # if using epsilon-greedy algo
-            #random_number = uniform(0, 1)
-            #if random_number < epsilon:
-            #    action = env.action_space.sample()
-            #else:
-            #    argmax_a_ = np.argmax(q_space[index])
-            #    action = argmax_a_
-            action = np.argmax(q_space[index])
-
             observation_, reward, done, info = env.step(action)
 
             total_reward += reward
@@ -252,55 +243,31 @@ def q_learning():
 
             # update x and alpha values
             x_space[index][action] += 1
-            alpha = max(0.1, 1 / (x_space[index][action])) # still using alpha
-            #alpha = 0.5
+            alpha = max(min_alpha, 1 / (x_space[index][action])) # clamping alpha to min_alpha
 
             #print(index, index_, epsilon, alpha)
 
-            if index_ == index:
-                #print("state did not change.")
-                #print('.', end=' ')
+            if index_ == index: # discretized state did not change after taking action
+                print('.', end=' ')
                 num_same_state += 1
             else:
-                #print('+', end=' ')
+                print('+', end=' ')
                 cells_visited.append((index, action, reward, alpha))
                 num_same_state = 0 # reset to 0
-                #print(action, rand_number < alpha, reward, index, q_space[index])
 
             # updating q values
             if done:
-                print("\nEpisode {} finished after {} timesteps. learning rate (alpha) = {}"
-                    .format(i_episode, t+1, alpha))
+                print("\nEpisode {} inner_Episode {} finished after {} timesteps. learning rate (alpha) = {}"
+                    .format(i_episode + 1, num_inner_episodes, t+1, alpha))
                 print("reward at done: ", reward)
                 reward = reward + total_reward + done_reward # put a penalty for dying.
                 # update q values of final state with new reward
-                sample = reward # changed reward to total_reward
+                sample = reward # no more states after this, hence no gamma * next_q(s,a)
                 q_space[index][action] = (1 - alpha) * q_space[index][action] + alpha * sample
-
-                # also back propagate negative incentive to all previously visited states
-                #index_l_ = cells_visited[-1][0]
-                #for visited_index, (index_l, action_l, reward_l, alpha_l) in reversed(list(enumerate(cells_visited[:-1]))):
-                #    sample_l = reward_l + gamma * max(q_space[index_l_])
-                #    q_space[index_l][action_l] = (1 - alpha_l) * q_space[index_l][action_l] + alpha_l * sample_l
-                #    index_l_ = index_l
-                #if reward < 0:
-                #    bp_decay = backprop_decay
-                #    for visited_index, (index_l, action_l, reward_l, alpha_l) in reversed(list(enumerate(cells_visited[:-1]))):
-                #        q_space[index_l][action_l] = (1 - bp_decay) * q_space[index_l][action_l]
-                #        bp_decay = bp_decay * bp_decay
-                #else:
-                #    index_l_ = cells_visited[-1][0]
-                #    for visited_index, (index_l, action_l, reward_l, alpha_l) in reversed(list(enumerate(cells_visited[:-1]))):
-                #        sample_l = reward_l + gamma * max(q_space[index_l_])
-                #        q_space[index_l][action_l] = (1 - alpha_l) * q_space[index_l][action_l] + alpha_l * sample_l
-                #        index_l_ = index_l
-
                 break
             else:
                 # using exploration function f(u,n) = u + k/n # k = exploration temperature
                 sample = (reward) + gamma * exploration_function(q_space, x_space, index_, env.action_space.n, k)
-                #if index_ != index:
-                #sample = (reward) + gamma * max(q_space[index_])
                 q_space[index][action] = (1 - alpha) * q_space[index][action] + alpha * sample
 
             observation = observation_
