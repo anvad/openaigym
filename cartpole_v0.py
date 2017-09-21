@@ -99,8 +99,12 @@ def main(args):
     """
     if len(args) == 0:
         q_learning()
-    elif len(args) == 2:
-        apply_learned_q_values(args[0], args[1])
+    elif len(args) == 1:
+        try:
+            num_elements_per_dimension = int(args[0])
+            apply_learned_q_values_2(num_elements_per_dimension)
+        except ValueError:
+            apply_learned_q_values(args[0])
     else:
         apply_learned_q_values_2(4)
 
@@ -158,13 +162,14 @@ def apply_learned_q_values_inner(q_space, num_elements_per_dimension):
             break
 
 
-def apply_learned_q_values(q_space_file_name, num_elements_per_dimension):
+def apply_learned_q_values(q_space_file_name):
     """
     given a numpy array file, uses the learned q-values to apply the best policy
     """
 
-    num_elements_per_dimension = int(num_elements_per_dimension)
+    #num_elements_per_dimension = int(num_elements_per_dimension)
     q_space = np.load(q_space_file_name) # './q_space.npy'
+    num_elements_per_dimension = q_space.shape[0] # assumes each dimension is segmented into same number of elements
     print("q_space_file_name={}, num_elements_per_dimension={}".format(q_space_file_name, num_elements_per_dimension))
 
     apply_learned_q_values_inner(q_space, num_elements_per_dimension)
@@ -190,13 +195,13 @@ def q_learning():
     env = gym.make('CartPole-v0')
     #env = wrappers.Monitor(env, './tmp/cartpole-experiment-1', )
     num_episodes = 10000 # number of episodes we'll play
-    max_inner_episodes = 199 # if we have not converged after these many episodes, ditch the qspace and start again
-    max_steps_per_episode = 201
-    num_elements_per_dimension = 4 # number of discrete pieces to divide each dimension of the observation space into
-    k = 5 # exploration temperature. higher value means we give more weight to explore, else more weight to exploit
-    done_reward = -200
+    max_inner_episodes = 399 # if we have not converged after these many episodes, ditch the qspace and start again
+    max_steps_per_episode = 200
+    num_elements_per_dimension = 2 # number of discrete pieces to divide each dimension of the observation space into
+    k = 1 # exploration temperature. higher value means we give more weight to explore, else more weight to exploit
+    done_reward = -10000
     gamma = 0.8  # discount factor. higher value means we still value old data
-    min_alpha = 0.2 # minimum learning rate as we keep exploring. alpha will never go lower than this
+    min_alpha = 0.5 # minimum learning rate as we keep exploring. alpha will never go lower than this
 
     # store running average of total reward for last X episodes in a circular buffer
     num_last_few_episodes = 20
@@ -267,8 +272,10 @@ def q_learning():
                 print("\nEpisode {} inner_Episode {} finished after {} timesteps. learning rate (alpha) = {}"
                     .format(i_episode + 1, num_inner_episodes, t+1, alpha))
                 print("reward at done: ", reward)
-                reward = reward + total_reward + done_reward # put a penalty for dying.
+
                 # update q values of final state with new reward
+                if (t + 1) < max_steps_per_episode: # i.e. if we failed to complete the challenge
+                    reward = reward + total_reward + done_reward # put a penalty for dying.
                 sample = reward # no more states after this, hence no gamma * next_q(s,a)
                 q_space[index][action] = (1 - alpha) * q_space[index][action] + alpha * sample
 
